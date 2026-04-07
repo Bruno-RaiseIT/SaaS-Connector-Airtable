@@ -1,0 +1,75 @@
+{
+	"name": "bruno-raise-it-airtable-connector",
+	"commands": [
+		"std:account:list",
+		"std:account:read",
+        "std:account:create",
+        "std:account:update",
+        "std:account:delete",
+		"std:test-connection",
+		"std:entitlement:list"
+	],
+	"sourceConfig": [
+		{
+			"type": "menu",
+			"label": "Configuração do Airtable",
+			"items": [
+				{
+					"type": "section",
+					"sectionTitle": "Autenticação",
+					"sectionHelpMessage": "Insira as credenciais do seu ambiente Airtable Sandbox.",
+					"items": [
+						{
+							"key": "apikey",
+							"label": "Airtable PAT (Token)",
+							"type": "text",
+                            "required": true
+						},
+                        {
+							"key": "airtableBase",
+							"label": "Airtable Base ID (ex: appXYZ...)",
+							"type": "text",
+                            "required": true
+						}
+					]
+				}
+			]
+		}
+	],
+	"accountSchema": {
+		"displayAttribute": "name",
+		"identityAttribute": "id",
+		"attributes": [
+			{ "name": "id", "type": "string", "description": "ID único do usuário" },
+			{ "name": "name", "type": "string", "description": "Nome do usuário" },
+			{ "name": "email", "type": "string", "description": "Endereço de email do usuário" },
+			{ 
+				"name": "groups", 
+				"type": "string", 
+				"description": "Perfis de Acesso do Airtable",
+				"multi": true,
+				"entitlement": true,
+				"schemaObjectType": "group"
+			}
+		]
+	},
+	"entitlementSchemas": [
+		{
+			"type": "group",
+			"displayAttribute": "name",
+			"identityAttribute": "id",
+			"attributes": [
+				{
+					"name": "id",
+					"type": "string",
+					"description": "ID técnico da permissão"
+				},
+				{
+					"name": "name",
+					"type": "string",
+					"description": "Nome amigável da permissão"
+				}
+			]
+		}
+	]
+}
