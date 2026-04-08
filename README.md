@@ -59,6 +59,12 @@ npm run build
 # Empacotar o código e o manifesto visual em um arquivo ZIP
 npm run pack-zip
 
+# Nota sobre o Pacote de Deploy:
+Caso o script automático falhe, o deploy manual deve seguir esta ordem:
+Executar npm run build.
+Copiar o arquivo connector-spec.json e packge.json para a pasta /dist.
+Compactar o conteúdo da pasta /dist (incluindo os arquivos .js e .json) em um arquivo chamado connector.zip.
+
 ### 2. Autenticação na SailPoint CLI
 Certifique-se de que sua CLI está apontando para o endereço de API do seu Tenant e autenticada via PAT.
 sail config ou sail env setup
@@ -89,7 +95,14 @@ Acesse o painel web corporativo do SailPoint ISC.
    * **Airtable Base ID:** O ID da base que será gerenciada (ex: appXYZ...).
 4. Clique em **Save** e depois em **Test Connection**.
 5. Vá até a aba **Import Data** e inicie uma **Account Aggregation** para sincronizar os usuários.
-6. Vá em **Entitlement Management > Entitlement Aggregation** e inicie a agregação para carregar os perfis de acesso disponíveis.
+6. Ajuste de Segurança (Threshold):
+Se você alterou a lógica de IDs e a agregação retornar um aviso de "Threshold exceeded", vá em Account Management > Account Aggregation.
+Altere o campo Percentage of Deleted Accounts para 100% e salve para permitir a sincronização inicial.
+7. Ativação Manual de Provisionamento (Interface):
+Além da requisição de API via PATCH, verifique na aba Review da Source se a opção Allow Access Requests está marcada como ativa. Isso garante que o SailPoint use o conector para novas solicitações.
+8. Disponibilização para o Usuário (Access Profile):
+Para que a conta possa ser solicitada, crie um Access Profile vinculado aos Entitlements (User ou Admin) que o conector agregou.
+9. Vá em **Entitlement Management > Entitlement Aggregation** e inicie a agregação para carregar os perfis de acesso disponíveis.
 
 👨‍💻 Autor
 Bruno Henrique Desenvolvido como projeto de laboratório e prova de conceito arquitetural para gestão de identidades SaaS-to-SaaS.
