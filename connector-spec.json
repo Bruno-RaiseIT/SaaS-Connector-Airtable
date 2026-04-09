@@ -6,6 +6,8 @@
         "std:account:create",
         "std:account:update",
         "std:account:delete",
+		"std:account:enable",
+        "std:account:disable",
 		"std:test-connection",
 		"std:entitlement:list"
 	],
@@ -43,9 +45,10 @@
 			{ "name": "id", "type": "string", "description": "ID único do usuário" },
 			{ "name": "name", "type": "string", "description": "Nome do usuário" },
 			{ "name": "email", "type": "string", "description": "Endereço de email do usuário" },
+			{ "name": "IIQDisabled", "type": "boolean", "description": "Status da conta (Soft Delete)" },
 			{ 
 				"name": "groups", 
-				"type": "string", 
+				"type": "string",
 				"description": "Perfis de Acesso do Airtable",
 				"multi": true,
 				"entitlement": true,

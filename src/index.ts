@@ -17,7 +17,11 @@ import {
     StdAccountDeleteInput,
     StdAccountDeleteOutput,
     StdEntitlementListInput,
-    StdEntitlementListOutput
+    StdEntitlementListOutput,
+    StdAccountEnableInput,
+    StdAccountEnableOutput,
+    StdAccountDisableInput,
+    StdAccountDisableOutput
 } from '@sailpoint/connector-sdk'
 import { MyClient } from './my-client'
 
@@ -41,12 +45,15 @@ export const connector = async () => {
                 attributes: { 
                     id: account.id, 
                     name: account.name,
-                    email: account.email 
+                    email: account.email,
+                    groups: account.groups 
                 }
             })
             }
             logger.info(`stdAccountList sent ${accounts.length} accounts`)
         })
+
+        // Rota de Leitura de Conta Única
         .stdAccountRead(async (context: Context, input: StdAccountReadInput, res: Response<StdAccountReadOutput>) => {
             const account = await myClient.getAccount(input.identity)
 
@@ -56,13 +63,33 @@ export const connector = async () => {
                 attributes: { 
                     id: account.id, 
                     name: account.name,
-                    email: account.email 
+                    email: account.email,
+                    groups: account.groups 
                 }
             })
             logger.info(`stdAccountRead read account : ${input.identity}`)
         })
+
+        //  Rota de Agregação de Permissões
+        .stdEntitlementList(async (context: Context, input: StdEntitlementListInput, res: Response<StdEntitlementListOutput>) => {
+            const groups = await myClient.getGroups();
+
+            for (const group of groups) {
+                res.send({
+                    identity: group.id ? group.id.toString() : '',
+                    uuid: group.id ? group.id.toString() : '',
+                    type: 'group', 
+                    attributes: {
+                        id: group.id,
+                        name: group.name
+                    }
+                });
+            }
+
+            logger.info(`stdEntitlementList: Foram enviados ${groups.length} perfis de acesso com sucesso!`);
+        })
         .stdAccountCreate(async (context: Context, input: StdAccountCreateInput, res: Response<StdAccountCreateOutput>) => {
-            // 1. Busca todas as contas atuais para saber o maior ID
+            // 1. Busca todas as contas 
             const accounts = await myClient.getAllAccounts()
             
             // 2. Calcula o próximo ID (pega o maior valor de id e soma 1)
@@ -111,29 +138,27 @@ export const connector = async () => {
             res.send({})
             logger.info(`stdAccountDelete deleted account : ${input.identity}`)
         })
-        // NOSSA NOVA ROTA DE PERMISSÕES
-        .stdEntitlementList(async (context: Context, input: StdEntitlementListInput, res: Response<StdEntitlementListOutput>) => {
-            
-            res.send({
-                identity: 'airtable_user',
-                uuid: 'airtable_user',
-                type: 'group', 
-                attributes: {
-                    id: 'airtable_user',
-                    name: 'Airtable - Usuario Padrao'
-                }
-            })
 
-            res.send({
-                identity: 'airtable_admin',
-                uuid: 'airtable_admin',
-                type: 'group', 
-                attributes: {
-                    id: 'airtable_admin',
-                    name: 'Airtable - Administrador'
-                }
+        .stdAccountDisable(async (context: Context, input: StdAccountDisableInput, res: Response<StdAccountDisableOutput>) => {
+            logger.info(`Running account disable for ID: ${input.identity}`)
+            const account = await myClient.disableAccount(input.identity)
+            res.send({ 
+                identity: account.id ? account.id.toString() : '', 
+                uuid: account.id ? account.id.toString() : '', 
+                attributes: account 
             })
-
-            logger.info("stdEntitlementList: Perfis de acesso enviados com sucesso!")
+            logger.info(`stdAccountDisable disabled account : ${input.identity}`)
         })
+
+        .stdAccountEnable(async (context: Context, input: StdAccountEnableInput, res: Response<StdAccountEnableOutput>) => {
+            logger.info(`Running account enable for ID: ${input.identity}`)
+            const account = await myClient.enableAccount(input.identity)
+            res.send({ 
+                identity: account.id ? account.id.toString() : '', 
+                uuid: account.id ? account.id.toString() : '', 
+                attributes: account 
+            })
+            logger.info(`stdAccountEnable enabled account : ${input.identity}`)
+        })
+        
 }

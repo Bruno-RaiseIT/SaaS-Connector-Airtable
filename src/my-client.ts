@@ -4,7 +4,6 @@ import Airtable from "airtable"
 export class MyClient {
     private readonly airtableBase: Airtable.Base
 
-    // Inicializa a conexão validando as credenciais (evita erro 401/403)
     constructor(config: any) {
         if (config?.apikey == null) {
             throw new ConnectorError('apikey must be provided from config')
@@ -16,7 +15,35 @@ export class MyClient {
         this.airtableBase = new Airtable({ apiKey: config.apikey }).base(config.airtableBase);
     }
 
-    // Leitura em Massa: Retorna id, name e email de todos
+    // Converte IDs do SailPoint (ex: airtable_admin) para Record IDs internos do Airtable (ex: recXYZ...)
+    private async getGroupRecordIds(groupStringIds: string[]): Promise<string[]> {
+        if (!groupStringIds || groupStringIds.length === 0) return [];
+
+        const records = await this.airtableBase('Groups').select().all();
+        const recordIds: string[] = [];
+
+        for (const stringId of groupStringIds) {
+            const groupRecord = records.find(r => r.get('id') === stringId);
+            if (groupRecord) {
+                recordIds.push(groupRecord.getId());
+            }
+        }
+        return recordIds;
+    }
+
+    // Busca dinâmica dos Grupos/Entitlements
+    async getGroups(): Promise<any[]> {
+        const records = await this.airtableBase('Groups').select().all();
+        
+        return records.map(record => {
+            return {
+                id: record.get('id'),     
+                name: record.get('name')  
+            };
+        });
+    }
+
+    // Leitura Geral
     async getAllAccounts(): Promise<any[]> {
         const records = await this.airtableBase('Users').select().all()
         
@@ -24,12 +51,14 @@ export class MyClient {
             return {
                 id: record.get('id'),
                 name: record.get('name'),
-                email: record.get('email')
+                email: record.get('email'),
+                groups: record.get('id (from groups)') || [],
+                IIQDisabled: record.get('Inactive') === true
             };
         })
     }
 
-    // Leitura Individual: Retorna id, name e email de um único ID
+    // Leitura Individual 
     async getAccount(identity: string): Promise<any> {
         const records = await this.airtableBase('Users').select({
             filterByFormula: `{id} = '${identity}'`
@@ -43,18 +72,28 @@ export class MyClient {
         return {
             id: record.get('id'),
             name: record.get('name'),
-            email: record.get('email')
+            email: record.get('email'),
+            groups: record.get('id (from groups)') || [],
+            IIQDisabled: record.get('Inactive') === true
         };
     }
 
-    // Criação: Salva id, name e email e retorna a confirmação completa
+    // Criação: Suporta criação de conta já com os grupos atribuídos
     async createAccount(attributes: any): Promise<any> {
-        // Enviamos o ID gerado junto com os outros dados
+        // 1. Traduz os grupos enviados pelo SailPoint para Record IDs do Airtable
+        let groupRecordIds: string[] = [];
+        if (attributes.groups) {
+            const groupsArray = Array.isArray(attributes.groups) ? attributes.groups : [attributes.groups];
+            groupRecordIds = await this.getGroupRecordIds(groupsArray);
+        }
+
+        // 2. Envia a requisição de criação
         const records = await this.airtableBase('Users').create([{
             fields: { 
-                "id": Number(attributes.id), // <-- INCLUSÃO DO ID AQUI
+                "id": Number(attributes.id),
                 "name": attributes.name,
-                "email": attributes.email 
+                "email": attributes.email,
+                "groups": groupRecordIds 
             }
         }]);
 
@@ -64,15 +103,16 @@ export class MyClient {
 
         const record = records[0];
         
-        // Retornamos o valor da coluna 'id' em vez do record.getId() interno
         return {
             id: record.get('id'), 
             name: record.get('name'),
-            email: record.get('email')
+            email: record.get('email'),
+            groups: record.get('id (from groups)') || [],
+            IIQDisabled: record.get('Inactive') === true
         };
     }
 
-    // Atualização: Aplica o plano de mudanças dinamicamente
+    // Processa o plano de acesso (Add/Remove) de forma inteligente
     async updateAccount(identity: string, changes: any[]): Promise<any> {
         const records = await this.airtableBase('Users').select({
             filterByFormula: `{id} = '${identity}'`
@@ -82,15 +122,45 @@ export class MyClient {
             throw new ConnectorError(`Account with id ${identity} not found for update`);
         }
 
-        const recordId = records[0].getId(); 
+        const record = records[0];
+        const recordId = record.getId(); 
 
         let fieldsToUpdate: any = {};
+        
+        // Recupera os vínculos (Record IDs) que o usuário já possui
+        let currentGroupRecIds: string[] = record.get('groups') as string[] || [];
+
+        // Varre as requisições enviadas pelo SailPoint
         for (const change of changes) {
-            if (change.op === 'Set' || change.op === 'Add') { 
-                fieldsToUpdate[change.attribute] = change.value;
+            if (change.attribute === 'groups') {
+                // Traduz o grupo alvo da requisição
+                const changeGroupRecIds = await this.getGroupRecordIds([change.value]);
+                const targetRecId = changeGroupRecIds.length > 0 ? changeGroupRecIds[0] : null;
+
+                if (targetRecId) {
+                    if (change.op === 'Add') {
+                        currentGroupRecIds.push(targetRecId);
+                        fieldsToUpdate['groups'] = [...new Set(currentGroupRecIds)]; // Remove duplicatas
+                    } else if (change.op === 'Remove') {
+                        fieldsToUpdate['groups'] = currentGroupRecIds.filter(id => id !== targetRecId);
+                    } else if (change.op === 'Set') {
+                        fieldsToUpdate['groups'] = changeGroupRecIds;
+                    }
+                }
+            } else {
+                // Para atributos simples (name, email)
+                if (change.op === 'Set' || change.op === 'Add') { 
+                    fieldsToUpdate[change.attribute] = change.value;
+                }
             }
         }
 
+        // Se não houver nada para atualizar (ex: grupo não encontrado), aborta e retorna o usuário como está
+        if (Object.keys(fieldsToUpdate).length === 0) {
+            return this.getAccount(identity);
+        }
+
+        // Aplica as atualizações no Airtable
         const updatedRecords = await this.airtableBase('Users').update([
             {
                 id: recordId,
@@ -101,11 +171,48 @@ export class MyClient {
         return { 
             id: updatedRecords[0].get('id'), 
             name: updatedRecords[0].get('name'),
-            email: updatedRecords[0].get('email') 
+            email: updatedRecords[0].get('email'),
+            groups: updatedRecords[0].get('id (from groups)') || []
         };
     }
 
-    // Exclusão: Deleta a conta pela identidade
+    // Desabilita a conta marcando o checkbox Inactive
+    async disableAccount(identity: string): Promise<any> {
+        const records = await this.airtableBase('Users').select({
+            filterByFormula: `{id} = '${identity}'`
+        }).firstPage();
+
+        if (records.length === 0) {
+            throw new ConnectorError(`Account with id ${identity} not found for disable`);
+        }
+
+        const recordId = records[0].getId(); 
+        const updatedRecords = await this.airtableBase('Users').update([
+            { id: recordId, fields: { "Inactive": true } }
+        ]);
+
+        return this.getAccount(identity); 
+    }
+
+    // Habilita a conta desmarcando o checkbox Inactive
+    async enableAccount(identity: string): Promise<any> {
+        const records = await this.airtableBase('Users').select({
+            filterByFormula: `{id} = '${identity}'`
+        }).firstPage();
+
+        if (records.length === 0) {
+            throw new ConnectorError(`Account with id ${identity} not found for enable`);
+        }
+
+        const recordId = records[0].getId(); 
+        const updatedRecords = await this.airtableBase('Users').update([
+            { id: recordId, fields: { "Inactive": false } }
+        ]);
+
+        return this.getAccount(identity); 
+    }
+
+    // Exclusão: Mantida inalterada
     async deleteAccount(identity: string): Promise<any> {
         const records = await this.airtableBase('Users').select({
             filterByFormula: `{id} = '${identity}'`
@@ -121,7 +228,7 @@ export class MyClient {
         return {};
     }
 
-    // Validação de porta aberta para a interface gráfica
+    // Test Connection
     async testConnection(): Promise<any> {
         return this.airtableBase('Users').select().firstPage().then(records => {
             return {}
