@@ -41,6 +41,8 @@ Este conector foi configurado para suportar as seguintes operações de gerencia
 - [x] `std:account:update`: Atualiza atributos de uma conta via código.
 - [x] `std:account:delete`: Remove uma conta do sistema.
 - [x] `std:entitlement:list`: Agrega (lê) os grupos de permissão disponíveis no sistema (Airtable User / Admin).
+- [x] `std:account:disable: Inativa o usuário no Airtable marcando o campo Inactive.
+- [x] `std:account:enable: Reativa o usuário desmarcando o campo Inactive.
 
 ---
 
